@@ -8,6 +8,7 @@ import 'clientes/clientes_module.dart';
 import 'cuentas/cuentas_module.dart';
 import 'graficas/graficas_module.dart';
 import 'recargas/recargas_module.dart';
+import 'revision/revision_module.dart';
 import 'settings/settings_module.dart';
 import 'tpvdark/tpvdark_module.dart';
 
@@ -19,6 +20,7 @@ final List<AppModule> modules = [
   ClientesModule(),
   ArticulosModule(),
   GraficasModule(),
+  RevisionModule(),
   TpvdarkModule(),
   SettingsModule(),
 ];

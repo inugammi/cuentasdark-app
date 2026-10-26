@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import 'calc.dart';
 import 'db.dart';
+import 'revision.dart';
 import 'settings.dart';
 
 /// Conexión con TPVDark a través de su Supabase (la misma cuenta que la caja y TPVDarkMovil).
@@ -153,6 +154,10 @@ class Tpv {
     if (ultima != null && ultima.subtract(const Duration(days: 1)).isBefore(desde)) {
       desde = ultima.subtract(const Duration(days: 1));
     }
+    if (await Db.kv('artDesde') == null) {
+      // Primera vez: todo el histórico de ventas y artículos, no solo los últimos días.
+      await historicoCompleto((_, _) {});
+    }
     final v = await ventas(desde, manana);
     final a = await articulos(desde, manana);
     var r = 0;
@@ -160,6 +165,7 @@ class Tpv {
       r = await recargasCaja(desde);
     } catch (_) {}
     await Db.setKv('tpvUltima', iso(hoy));
+    if (r > 0) await Vigilante.limpiar();
     var msg = 'TPVDark: $v días de ventas, $a artículos/día';
     try {
       msg += '\n${await respaldar()}';
@@ -167,6 +173,33 @@ class Tpv {
       msg += '\nRespaldo: ejecuta supabase/cuentas_v1.sql para activarlo.';
     }
     return '$msg${r > 0 ? ', $r recargas nuevas de la caja' : ''}.';
+  }
+
+  /// Fecha de la venta más vieja que hay en Supabase.
+  Future<DateTime?> primeraVenta() async {
+    final r = await _get('ventas?select=fecha&order=fecha.asc&limit=1');
+    return r.isEmpty ? null : DateTime.tryParse((r.first['fecha'] as String).substring(0, 10));
+  }
+
+  /// Trae TODO el histórico de ventas y artículos, mes por mes, desde la primera venta en Supabase.
+  /// [avance] recibe el mes que va (para la barra de progreso).
+  Future<String> historicoCompleto(void Function(String mes, double avance) avance) async {
+    final ini = await primeraVenta();
+    if (ini == null) return 'No hay ventas en Supabase.';
+    final hoy = soloFecha(DateTime.now()).add(const Duration(days: 1));
+    var m = DateTime(ini.year, ini.month);
+    final total = (hoy.year - m.year) * 12 + hoy.month - m.month + 1;
+    var i = 0, filas = 0;
+    while (m.isBefore(hoy)) {
+      final f = DateTime(m.year, m.month + 1);
+      avance('${m.year}-${m.month.toString().padLeft(2, '0')}', i / total);
+      await ventas(m, f.isAfter(hoy) ? hoy : f);
+      filas += await articulos(m, f.isAfter(hoy) ? hoy : f);
+      m = f;
+      i++;
+    }
+    await Db.setKv('artDesde', iso(ini));
+    return 'Histórico completo desde ${iso(ini)}: $filas artículos/día.';
   }
 
   // ---------------- Respaldo de las cuentas ----------------

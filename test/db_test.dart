@@ -50,6 +50,34 @@ void main() {
     expect(l.isNotEmpty, isTrue);
   });
 
+  test('la misma recarga de la caja y de TAE Pocket cuenta una sola vez', () async {
+    final tae = {'fecha': '2026-10-26 11:02', 'compania': 'TELCEL', 'telefono': '9611111111', 'monto': 100.0, 'folio': '555', 'proveedor': 'TAEPOCKET'};
+    final caja = {'fecha': '2026-10-26 11:09', 'compania': 'TELCEL', 'telefono': '9611111111', 'monto': 100.0, 'folio': '', 'proveedor': 'TAEPOCKET'};
+    expect(await Db.guardarRecargas([caja], 'tpv'), 1);
+    expect(await Db.guardarRecargas([tae], 'tae'), 1); // reemplaza a la de la caja
+    expect(await Db.guardarRecargas([caja], 'tpv'), 0);
+    final l = await Db.recargas('2026-10-26', '2026-10-27', tel: '9611111111');
+    expect(l.length, 1);
+    expect(l.first['folio'], '555');
+    // La página leída con otro folio pero al mismo minuto también es la misma
+    expect(await Db.guardarRecargas([{...tae, 'fecha': '2026-10-26 11:03', 'folio': '1', 'monto': 101.0}], 'tae'), 0);
+    // Dos recargas reales (folios distintos) del mismo número a los 5 minutos sí cuentan
+    expect(await Db.guardarRecargas([{...tae, 'fecha': '2026-10-26 11:07', 'folio': '556'}], 'tae'), 1);
+  });
+
+  test('el vigilante quita repetidas ya guardadas', () async {
+    final a = {'fecha': '2026-10-26 12:00', 'compania': 'BAIT', 'telefono': '9612222222', 'monto': 50.0, 'folio': '', 'proveedor': 'TAEPOCKET'};
+    await Db.raw.insert('recargas', {...a, 'clave': 'x1', 'origen': 'tpv', 'deleted': 0});
+    await Db.raw.insert('recargas', {...a, 'fecha': '2026-10-26 12:04', 'folio': '777', 'clave': 'x2', 'origen': 'tae', 'deleted': 0});
+    final antes = (await Db.raw.rawQuery("SELECT COUNT(*) c FROM recargas WHERE deleted=0")).first['c'] as int;
+    expect(await Db.limpiarDuplicados(), greaterThanOrEqualTo(1));
+    final quedan = await Db.recargas('2026-10-26', '2026-10-27', tel: '9612222222');
+    expect(quedan.length, 1);
+    expect(quedan.first['folio'], '777');
+    expect(await Db.limpiarDuplicados(), 0);
+    expect((await Db.raw.rawQuery("SELECT COUNT(*) c FROM recargas WHERE deleted=0")).first['c'], antes - 1);
+  });
+
   test('guardar recargas repetidas no las duplica', () async {
     final r = {'fecha': '2026-10-26 10:00', 'compania': 'TELCEL', 'telefono': '9610000000', 'monto': 50.0, 'folio': 'x', 'proveedor': 'TAEPOCKET'};
     expect(await Db.guardarRecargas([r], 'tae'), 1);

@@ -24,6 +24,12 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
 - `lib/core/tpv.dart` — Supabase de TPVDark (login correo/contraseña como TPVDarkMovil, RLS `authenticated`).
   Lee `v_ventas_dia`, `v_articulos_dia` (si no existen, cae a `ventas`/`ventas_lineas`), `recargas` (estado=1),
   y respalda en `cuentas_dias|recargas|nombres|abonos`.
+- `lib/core/revision.dart` — Vigilante: `limpiar()` quita recargas repetidas (origen='duplicado', deleted=1,
+  restaurables) y `revisar()` lista avisos (días sin capturar, diferencias ≥ $50 vs PDV, recargas que no coinciden,
+  lecturas de hoy pendientes, números frecuentes sin nombre). Corre al abrir, tras leer TAE Pocket y tras TPVDark.
+  Regla de "misma recarga" en `Db.esMisma`: mismo número, monto ±1, ≤20 min y (mismo folio, ±2 min o una sin folio).
+- `Tpv.historicoCompleto` baja ventas/artículos mes por mes desde la primera venta en Supabase (kv `artDesde`);
+  se hace sola la primera vez y desde Artículos > ⋮.
 - `lib/core/tae.dart` — WebView de taepocketplus.com; JS que junta celdas de todas las `<tr>`; `TaeAuto`.
 - `lib/core/charts.dart` — `Barras` y `Lineas` (fl_chart). `ui.dart` — `SelectorPeriodo`, `Dato(s)`, diálogos.
 - `lib/modules/*` — un módulo por carpeta, registrado en `lib/modules/registry.dart`.

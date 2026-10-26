@@ -7,6 +7,8 @@ import '../../core/db.dart';
 import '../../core/module.dart';
 import '../../core/settings.dart';
 import '../../core/ui.dart';
+import '../revision/revision_module.dart';
+import '../../core/revision.dart';
 import 'dia_page.dart';
 
 /// Lo de la hoja de Control Ciber: venta de cada día, por semana, mes y año.
@@ -51,6 +53,7 @@ class _CuentasPageState extends State<CuentasPage> {
   List<Rec> dias = [];
   Map<String, double> tpv = {};
   String? aviso;
+  int pendientes = 0;
 
   @override
   void initState() {
@@ -71,6 +74,9 @@ class _CuentasPageState extends State<CuentasPage> {
     final t = await Db.raw.query('tpv_dia', where: 'fecha>=? AND fecha<?', whereArgs: [iso(ini), iso(f)]);
     final a = await Db.kv('taeAviso');
     if (!mounted) return;
+    final rev = await Vigilante.revisar(context.read<Settings>(), dias: 15);
+    if (!mounted) return;
+    pendientes = rev.where((x) => x.nivel > 0).length;
     setState(() {
       dias = d;
       tpv = {for (final x in t) x['fecha'] as String: n(x['ventas'])};
@@ -109,6 +115,18 @@ class _CuentasPageState extends State<CuentasPage> {
               });
               _cargar();
             }),
+        if (pendientes > 0)
+          Card(
+            color: Theme.of(context).colorScheme.errorContainer,
+            margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: ListTile(
+              leading: const Icon(Icons.fact_check),
+              title: Text('$pendientes cosas por revisar'),
+              subtitle: const Text('Días sin capturar, diferencias o lecturas pendientes'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RevisionPage())).then((_) => _cargar()),
+            ),
+          ),
         if (aviso != null && periodo != Periodo.anio)
           Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),

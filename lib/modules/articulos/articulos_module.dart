@@ -35,12 +35,48 @@ class _ArticulosPageState extends State<ArticulosPage> {
   var porDinero = false;
   var trayendo = false;
   List<Rec> filas = [];
+  String? rango;
 
   @override
   void initState() {
     super.initState();
     cambiosDatos.addListener(_cargar);
     _cargar();
+  }
+
+  /// Baja todas las ventas de TPVDark mes por mes, desde la primera.
+  Future<void> _todo() async {
+    final tpv = Tpv(context.read<Settings>());
+    if (!tpv.configurado) {
+      toast(context, 'Primero conecta TPVDark en Más > TPVDark.');
+      return;
+    }
+    final mes = ValueNotifier<(String, double)>(('', 0));
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        title: const Text('Trayendo todo el histórico'),
+        content: ValueListenableBuilder(
+          valueListenable: mes,
+          builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+            LinearProgressIndicator(value: v.$2),
+            const SizedBox(height: 8),
+            Text(v.$1.isEmpty ? 'Buscando la primera venta…' : 'Mes ${v.$1}'),
+          ]),
+        ),
+      ),
+    );
+    String r;
+    try {
+      r = await tpv.historicoCompleto((m, a) => mes.value = (m, a));
+    } catch (e) {
+      r = '$e';
+    }
+    if (!mounted) return;
+    Navigator.pop(context);
+    toast(context, r);
+    avisarCambios();
   }
 
   @override
@@ -56,7 +92,13 @@ class _ArticulosPageState extends State<ArticulosPage> {
         'FROM art_dia WHERE fecha>=? AND fecha<? AND (articulo LIKE ? OR descripcion LIKE ?) '
         'GROUP BY articulo ORDER BY ${porDinero ? 'total' : 'cantidad'} DESC LIMIT 500',
         [iso(ini), iso(fin(periodo, ini)), b, b]);
-    if (mounted) setState(() => filas = r);
+    final g = await Db.raw.rawQuery('SELECT MIN(fecha) a, MAX(fecha) b, COUNT(DISTINCT fecha) d FROM art_dia');
+    if (mounted) {
+      setState(() {
+        filas = r;
+        rango = g.first['a'] == null ? null : 'Histórico guardado: ${g.first['a']} a ${g.first['b']} (${g.first['d']} días con venta)';
+      });
+    }
   }
 
   Future<void> _traer() async {
@@ -96,6 +138,10 @@ class _ArticulosPageState extends State<ArticulosPage> {
             tooltip: 'Traer de TPVDark este periodo',
             icon: trayendo ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.sync),
             onPressed: trayendo ? null : _traer),
+        PopupMenuButton<String>(
+          onSelected: (_) => _todo(),
+          itemBuilder: (_) => const [PopupMenuItem(value: 'todo', child: Text('Traer TODO el histórico de TPVDark'))],
+        ),
       ]),
       body: ListView(children: [
         SelectorPeriodo(
@@ -118,6 +164,10 @@ class _ArticulosPageState extends State<ArticulosPage> {
             },
           ),
         ),
+        if (rango != null)
+          Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: Text(rango!, style: Theme.of(context).textTheme.bodySmall)),
         Datos([
           Dato('Vendido', money(total), color: Colors.green),
           Dato('Piezas', entero(piezas)),

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'core/db.dart';
 import 'core/module.dart';
+import 'core/revision.dart';
 import 'core/settings.dart';
 import 'core/tae.dart';
 import 'core/tpv.dart';
@@ -63,6 +64,7 @@ class _HomeState extends State<Home> {
   Future<void> _arranque() async {
     try {
       await Db.importarHistorico();
+      await Vigilante.limpiar();
     } catch (e) {
       debugPrint('$e');
     }

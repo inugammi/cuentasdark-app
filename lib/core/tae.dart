@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'calc.dart';
 import 'db.dart';
 import 'module.dart';
+import 'revision.dart';
 import 'settings.dart';
 import 'ui.dart';
 
@@ -41,6 +42,7 @@ Future<(int nuevas, int leidas, bool login)> leerTae(WebViewController c) async 
   final nuevas = await Db.guardarRecargas(recs, 'tae');
   if (recs.isNotEmpty) {
     await Db.setKv('taeUltima', iso(DateTime.now()));
+    await Vigilante.limpiar();
     avisarCambios();
   }
   return (nuevas, recs.length, j['login'] == true);

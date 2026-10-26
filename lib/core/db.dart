@@ -158,19 +158,98 @@ class Db {
   }
 
   // ---------------- Recargas ----------------
-  /// Guarda recargas nuevas (las repetidas se ignoran). Devuelve cuántas eran nuevas.
+  /// Guarda recargas nuevas. Las repetidas se ignoran aunque vengan de otro lado (Excel, TAE Pocket,
+  /// caja de TPVDark, pegado): mismo número, mismo monto (±cargo) y a menos de [minutosDuplicado] minutos.
+  /// Dos recargas con folio distinto sí son distintas (el cliente recargó dos veces).
+  /// Devuelve cuántas eran nuevas.
   static Future<int> guardarRecargas(List<Rec> lista, String origen) async {
     var nuevas = 0;
     await _db.transaction((tx) async {
       for (final r in lista) {
+        final previa = await _gemela(tx, r);
+        if (previa != null) {
+          // Si la que ya estaba no tenía folio (caja/manual) y la nueva sí, se queda la de TAE Pocket.
+          if (_folio(previa).isEmpty && _folio(r).isNotEmpty) {
+            await tx.update('recargas', {'deleted': 1, 'origen': 'duplicado', 'synced': 0, 'updated_at': now},
+                where: 'clave=?', whereArgs: [previa['clave']]);
+          } else {
+            continue;
+          }
+        }
         final id = await tx.insert(
-            'recargas', {...r, 'clave': claveRecarga(r), 'origen': origen, 'updated_at': now, 'synced': 0},
+            'recargas', {...r, 'clave': claveRecarga(r), 'origen': origen, 'updated_at': now, 'synced': 0, 'deleted': 0},
             conflictAlgorithm: ConflictAlgorithm.ignore);
         if (id > 0) nuevas++;
       }
     });
     return nuevas;
   }
+
+  static const minutosDuplicado = 20;
+  static String _folio(Rec r) => '${r['folio'] ?? ''}'.trim().startsWith('MANUAL') ? '' : '${r['folio'] ?? ''}'.trim();
+
+  static Future<Rec?> _gemela(DatabaseExecutor tx, Rec r) async {
+    final f = leerFecha('${r['fecha']}');
+    if (f == null) return null;
+    final c = await tx.query('recargas',
+        where: 'deleted=0 AND telefono=? AND ABS(monto-?)<=1.0 AND fecha>=? AND fecha<=?',
+        whereArgs: [
+          r['telefono'], n(r['monto']),
+          fechaHora(f.subtract(const Duration(minutes: minutosDuplicado))),
+          fechaHora(f.add(const Duration(minutes: minutosDuplicado))),
+        ]);
+    for (final x in c) {
+      if (x['clave'] == claveRecarga(r)) return x;
+      if (esMisma(x, r)) return x;
+    }
+    return null;
+  }
+
+  /// ¿Son la misma recarga? (ya se sabe que es el mismo número, monto ±1 y a menos de 20 min)
+  /// - Mismo folio, o casi al mismo minuto (±2 min): sí, aunque el folio se haya leído distinto.
+  /// - Una sin folio (caja de TPVDark, manual): sí.
+  /// - Folios distintos y varios minutos de diferencia: no, el cliente recargó dos veces.
+  static bool esMisma(Rec a, Rec b) {
+    final fa = _folio(a), fb = _folio(b);
+    if (fa.isNotEmpty && fa == fb) return true;
+    final ta = leerFecha('${a['fecha']}'), tb = leerFecha('${b['fecha']}');
+    if (ta != null && tb != null && ta.difference(tb).inMinutes.abs() <= 2) return true;
+    if (fa.isEmpty && fb.isEmpty) return a['origen'] != 'excel' || b['origen'] != 'excel';
+    return fa.isEmpty || fb.isEmpty;
+  }
+
+  /// Vigilante: busca recargas repetidas que ya estén guardadas y las quita (quedan marcadas como
+  /// "duplicado" y se pueden restaurar). Devuelve cuántas quitó.
+  static Future<int> limpiarDuplicados() async {
+    final todas = await _db.query('recargas', where: 'deleted=0', orderBy: 'telefono, fecha');
+    var quitadas = 0;
+    final b = _db.batch();
+    for (var i = 0; i < todas.length; i++) {
+      final a = todas[i];
+      final fa = leerFecha('${a['fecha']}');
+      if (fa == null) continue;
+      for (var j = i + 1; j < todas.length; j++) {
+        final x = todas[j];
+        if (x['telefono'] != a['telefono']) break;
+        final fx = leerFecha('${x['fecha']}');
+        if (fx == null || fx.difference(fa).inMinutes > minutosDuplicado) break;
+        if ((n(x['monto']) - n(a['monto'])).abs() > 1) continue;
+        if (!esMisma(a, x)) continue;
+        // Se queda la que tiene folio; si las dos tienen o ninguna, la primera.
+        final quitar = _folio(a).isEmpty && _folio(x).isNotEmpty ? a : x;
+        b.update('recargas', {'deleted': 1, 'origen': 'duplicado', 'synced': 0, 'updated_at': now},
+            where: 'clave=?', whereArgs: [quitar['clave']]);
+        quitadas++;
+        if (identical(quitar, a)) break;
+      }
+    }
+    await b.commit(noResult: true);
+    return quitadas;
+  }
+
+  static Future<void> restaurarRecarga(String clave) => _db.update(
+      'recargas', {'deleted': 0, 'origen': 'restaurada', 'synced': 0, 'updated_at': now},
+      where: 'clave=?', whereArgs: [clave]);
 
   static Future<List<Rec>> recargas(String desde, String hasta, {String? tel}) => _db.rawQuery(
       'SELECT r.*, n.nombre FROM recargas r LEFT JOIN nombres n ON n.telefono=r.telefono AND n.deleted=0 '
