@@ -7,6 +7,7 @@ import '../../core/calc.dart';
 import '../../core/db.dart';
 import '../../core/module.dart';
 import '../../core/settings.dart';
+import '../../core/tpv.dart';
 import '../../core/ui.dart';
 
 /// Captura o corrige un día, igual que un renglón de Control Ciber.
@@ -19,7 +20,7 @@ class DiaPage extends StatefulWidget {
 }
 
 const _numeros = ['sencillo', 'caja', 'cambio', 'sen_a_bil', 'bil_a_sen', 'total_pdv', 'recargas'];
-const _textos = ['ingresos_txt', 'gastos_txt', 'pagos_txt', 'gasto_banca_txt', 'otros_ingresos_txt', 'notas'];
+const _textos = ['ingresos_txt', 'gastos_txt', 'pagos_txt', 'gasto_banca_txt', 'otros_ingresos_txt', 'notas', 'recogido_txt'];
 
 class _DiaPageState extends State<DiaPage> {
   final ctl = <String, TextEditingController>{};
@@ -29,6 +30,7 @@ class _DiaPageState extends State<DiaPage> {
   (double, int)? recTae;
   var listo = false;
   var bancaEnCaja = false;
+  List<Map<String, Object?>> movs = [];
 
   @override
   void initState() {
@@ -39,11 +41,22 @@ class _DiaPageState extends State<DiaPage> {
   String _txt(Object? v) => v == null || n(v) == 0 ? '' : (n(v) % 1 == 0 ? n(v).toInt().toString() : '${n(v)}');
 
   Future<void> _cargar() async {
-    final d = await Db.dia(widget.fecha) ?? {'fecha': widget.fecha};
+    final guardado = await Db.dia(widget.fecha);
+    final d = guardado ?? {'fecha': widget.fecha};
+    final f = DateTime.parse(widget.fecha);
+    if (mounted) {
+      // Movimientos de caja recientes de TPVDark (ingresos, retiros, recogidas, pagos a empleados).
+      final t = Tpv(context.read<Settings>());
+      if (t.configurado) {
+        try {
+          await t.movimientosCaja(f).timeout(const Duration(seconds: 6));
+        } catch (_) {}
+      }
+    }
+    movs = await Db.raw.query('tpv_mov', where: 'dia=?', whereArgs: [widget.fecha], orderBy: 'rowid');
     ayer = await Db.diaAnterior(widget.fecha);
     final t = await Db.raw.query('tpv_dia', where: 'fecha=?', whereArgs: [widget.fecha]);
     tpvVentas = t.isEmpty ? null : n(t.first['ventas']);
-    final f = DateTime.parse(widget.fecha);
     recTae = (await Db.recargasPorDia(widget.fecha, iso(f.add(const Duration(days: 1)))))[widget.fecha];
     original = d;
     bancaEnCaja = n(d['banca_en_caja']) == 1;
@@ -64,10 +77,30 @@ class _DiaPageState extends State<DiaPage> {
       final s = context.read<Settings>();
       ctl['recargas']!.text = _txt(recTae!.$1 + s.cargoRecarga * recTae!.$2);
     }
+    if (guardado == null) _ponerMovimientos();
     for (final c in ctl.values) {
       c.addListener(() => setState(() {}));
     }
     if (mounted) setState(() => listo = true);
+  }
+
+  /// Movimientos de TPVDark que todavía no están escritos en su renglón.
+  Map<String, List<String>> _faltantes() {
+    final r = <String, List<String>>{};
+    for (final m in movs) {
+      final k = campoMovimiento('${m['tipo']}', m['categoria'] as String?);
+      final l = lineaMovimiento(m);
+      if (k == null || ctl[k]!.text.contains(l)) continue;
+      (r[k] ??= []).add(l);
+    }
+    return r;
+  }
+
+  void _ponerMovimientos() {
+    for (final e in _faltantes().entries) {
+      final c = ctl[e.key]!;
+      c.text = [if (c.text.trim().isNotEmpty) c.text.trim(), ...e.value].join(', ');
+    }
   }
 
   Rec _datos() {
@@ -91,8 +124,11 @@ class _DiaPageState extends State<DiaPage> {
   }
 
   Future<void> _guardar() async {
+    final t = Tpv(context.read<Settings>());
     await Db.guardarDia(_datos());
     avisarCambios();
+    // Se sube de una vez para que TPVDark tome mañana el fondo de caja (cambio + caja).
+    if (t.configurado) t.respaldar().catchError((_) => '');
     if (mounted) Navigator.pop(context);
   }
 
@@ -109,6 +145,34 @@ class _DiaPageState extends State<DiaPage> {
       controller: ctl[k],
       maxLines: null,
       decoration: InputDecoration(labelText: label, hintText: hint, suffixText: suma != 0 ? money(suma) : null),
+    );
+  }
+
+  static const _destino = {
+    'recogido_txt': 'Recogido', 'ingresos_txt': 'Ingresos', 'otros_ingresos_txt': 'Otros ingresos',
+    'gastos_txt': 'Gastos', 'pagos_txt': 'Pagos', 'gasto_banca_txt': 'Gasto de banca',
+  };
+
+  Widget _cajaTpv() {
+    final falta = _faltantes();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Caja de TPVDark (${movs.length})', style: Theme.of(context).textTheme.titleSmall),
+          for (final m in movs)
+            Text('${money(n(m['importe']))} · ${m['empleado'] ?? m['concepto'] ?? m['categoria']} → '
+                '${_destino[campoMovimiento('${m['tipo']}', m['categoria'] as String?)]}'),
+          if (falta.isNotEmpty)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                  onPressed: _ponerMovimientos,
+                  icon: const Icon(Icons.playlist_add),
+                  label: Text('Poner ${falta.values.fold(0, (a, l) => a + l.length)} que faltan')),
+            ),
+        ]),
+      ),
     );
   }
 
@@ -155,6 +219,8 @@ class _DiaPageState extends State<DiaPage> {
             child: Text(bancaEnCaja
                 ? 'Contado ${money(n(r['billetes']))} · De hoy ${money(billetesHoy(r, ayer))}'
                 : 'Total billetes: ${money(n(r['billetes']))}')),
+        esp,
+        _texto('recogido_txt', 'Recogido de la caja en el día', '2000 recogida 3pm'),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Dejé la banca en caja (conté todo junto)'),
@@ -169,6 +235,7 @@ class _DiaPageState extends State<DiaPage> {
         esp,
         _num('cambio', 'Cambio (billetes que se quedan)'),
         const SectionTitle('Lo que entró y salió'),
+        if (movs.isNotEmpty) _cajaTpv(),
         _texto('ingresos_txt', 'Ingresos (no son venta)', '350 abono noe, 200 pago cfe'),
         esp,
         _texto('gastos_txt', 'Gastos', '500 comida, 40 tortilla'),

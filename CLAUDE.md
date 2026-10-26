@@ -18,6 +18,10 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
     Diferencia = Venta − TotalPDV + Recargas (hoja 2026; ajuste `diferenciaConRecargas`).
     `banca_en_caja`=1 ("Dejé la banca en caja"): los billetes contados traen la banca de ayer; Venta/Banca usan
     Billetes − Banca(ayer) (`billetesHoy`). `billetes` guarda lo contado.
+    `recogido(_txt)` = dinero recogido de la caja en el día (TPVDark "Recoger dinero"); se suma a Billetes.
+  - `campoMovimiento`/`lineaMovimiento`: movimientos de caja de TPVDark → renglón del día: RECOGIDA→recogido,
+    INGRESO→ingresos (no FONDO DE CAJA), INGRESO_FUERA_CAJA→otros_ingresos, RETIRO→gastos (PAGO A PROVEEDOR→pagos),
+    PAGO_EMPLEADO→gastos, RETIRO_FUERA_CAJA→gasto_banca.
   - Periodos día/semana(lunes-domingo)/mes/año; `leerFecha` y `filaRecarga` (lee filas del historial de TAE Pocket,
     formato 2025, 2026 y la página vieja "Recargas Más"); `claveRecarga` evita duplicados.
 - `lib/core/db.dart` — sqflite. Tablas: `dias` (fecha PK, columnas = `camposDia`, `calc`=0 si viene del Excel, 1 si se
@@ -26,6 +30,9 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
 - `lib/core/tpv.dart` — Supabase de TPVDark (login correo/contraseña como TPVDarkMovil, RLS `authenticated`).
   Lee `v_ventas_dia`, `v_articulos_dia` (si no existen, cae a `ventas`/`ventas_lineas`), `recargas` (estado=1),
   y respalda en `cuentas_dias|recargas|nombres|abonos`.
+  `movimientosCaja` lee la vista `v_cuentas_dark_movimientos` (TPVDark V163, schema_supabase_v1_35.sql; tabla
+  `caja_movimientos`) a la tabla local `tpv_mov`. El día nuevo se llena solo; botón "Poner N que faltan".
+  Al guardar un día se respalda de inmediato: TPVDark V163 toma `cambio + caja` del último día como fondo inicial.
 - `lib/core/revision.dart` — Vigilante: `limpiar()` quita recargas repetidas (origen='duplicado', deleted=1,
   restaurables) y `revisar()` lista avisos (días sin capturar, diferencias ≥ $50 vs PDV, recargas que no coinciden,
   lecturas de hoy pendientes, números frecuentes sin nombre). Corre al abrir, tras leer TAE Pocket y tras TPVDark.
@@ -35,7 +42,7 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
 - `lib/core/tae.dart` — WebView de taepocketplus.com; JS que junta celdas de todas las `<tr>`; `TaeAuto`.
 - `lib/core/charts.dart` — `Barras` y `Lineas` (fl_chart). `ui.dart` — `SelectorPeriodo`, `Dato(s)`, diálogos.
 - `lib/modules/*` — un módulo por carpeta, registrado en `lib/modules/registry.dart`.
-- `supabase/cuentas_v1.sql` = `lib/modules/tpvdark/sql.dart` (mantener iguales). `cuentas_v2.sql` agrega `banca_en_caja` (sql.dart = v1 + v2). Cambios nuevos: `cuentas_v3.sql`.
+- `supabase/cuentas_v1.sql` = `lib/modules/tpvdark/sql.dart` (mantener iguales). `cuentas_v2.sql` agrega `banca_en_caja`, `cuentas_v3.sql` agrega `recogido(_txt)` (sql.dart = v1+v2+v3). Cambios nuevos: `cuentas_v4.sql`.
 - `assets/historico.json.gz` — Excel unidos (generado con `tool/excel_a_json.py <carpeta con los xlsx> salida.json`
   y luego gzip; quitar abonos con fecha futura). 7,067 días (2005-12-20 a 2026-10-24), 19,550 recargas, 227 nombres.
 

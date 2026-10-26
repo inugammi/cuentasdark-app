@@ -31,7 +31,7 @@ double billetes(Rec d) {
 /// Devuelve una copia de [d] con venta, banca, sencillo_total, billetes y los totales de texto.
 Rec calcular(Rec d, Rec? ayer) {
   final r = Map<String, Object?>.from(d);
-  for (final k in ['ingresos', 'gastos', 'pagos', 'gasto_banca', 'otros_ingresos']) {
+  for (final k in ['ingresos', 'gastos', 'pagos', 'gasto_banca', 'otros_ingresos', 'recogido']) {
     final t = d['${k}_txt'] as String?;
     if (t != null && t.trim().isNotEmpty) r[k] = sumNumbers(t);
   }
@@ -39,7 +39,8 @@ Rec calcular(Rec d, Rec? ayer) {
   final contado = billetes(r);
   r['billetes'] = contado;
   // "Dejé la banca en caja": lo contado trae también la banca de ayer; se resta para sacar lo de hoy.
-  final bil = contado - (n(r['banca_en_caja']) == 1 ? n(a['banca']) : 0);
+  // Lo recogido de la caja en el día (TPVDark "Recoger dinero") ya no está en el cajón: cuenta como billete.
+  final bil = contado + n(r['recogido']) - (n(r['banca_en_caja']) == 1 ? n(a['banca']) : 0);
   r['venta'] = bil + n(r['sencillo']) - n(a['caja']) + n(r['gastos']) + n(r['pagos']) - n(a['cambio']) - n(r['ingresos']);
   r['banca'] = n(a['banca']) - n(r['gasto_banca']) + bil + n(r['sen_a_bil']) - n(r['bil_a_sen']) +
       n(r['otros_ingresos']) - n(r['cambio']);
@@ -48,7 +49,8 @@ Rec calcular(Rec d, Rec? ayer) {
 }
 
 /// Billetes que entraron hoy (sin la banca de ayer si se dejó en caja).
-double billetesHoy(Rec d, Rec? ayer) => billetes(d) - (n(d['banca_en_caja']) == 1 ? n(ayer?['banca']) : 0);
+double billetesHoy(Rec d, Rec? ayer) =>
+    billetes(d) + n(d['recogido']) - (n(d['banca_en_caja']) == 1 ? n(ayer?['banca']) : 0);
 
 double totalGlobal(Rec d) => n(d['banca']) + n(d['sencillo_total']);
 
@@ -202,4 +204,27 @@ List<Rec> pegarRecargas(String texto, {String proveedor = 'TAEPOCKET'}) {
     if (r != null) out.add(r);
   }
   return out;
+}
+
+/// A qué renglón del día va un movimiento de caja de TPVDark (`tipo_cuentas` de v_cuentas_dark_movimientos).
+String? campoMovimiento(String tipo, String? categoria) => switch (tipo) {
+      'RECOGIDA' => 'recogido_txt',
+      'INGRESO' => categoria == 'FONDO DE CAJA' ? null : 'ingresos_txt',
+      'INGRESO_FUERA_CAJA' => 'otros_ingresos_txt',
+      'PAGO_EMPLEADO' => 'gastos_txt',
+      'RETIRO' => categoria == 'PAGO A PROVEEDOR' ? 'pagos_txt' : 'gastos_txt',
+      'RETIRO_FUERA_CAJA' => 'gasto_banca_txt',
+      _ => null,
+    };
+
+/// Renglón de texto de un movimiento: "350 abono noe" (el número primero para que lo sume SumNumbers).
+String lineaMovimiento(Map<String, Object?> m) {
+  final imp = n(m['importe']);
+  final txt = [m['empleado'], m['concepto']]
+      .whereType<String>()
+      .map((x) => x.replaceAll(RegExp(r'[0-9]'), '').trim())
+      .where((x) => x.isNotEmpty)
+      .join(' ');
+  final num = imp % 1 == 0 ? imp.toInt().toString() : imp.toStringAsFixed(2);
+  return '$num ${txt.isEmpty ? (m['categoria'] ?? '').toString().toLowerCase() : txt}'.trim();
 }

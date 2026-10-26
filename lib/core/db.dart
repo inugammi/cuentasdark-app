@@ -14,9 +14,9 @@ const camposDia = [
   'b20', 'b50', 'b100', 'b200', 'b500', 'b1000', 'billetes', 'sencillo', 'caja', 'ingresos', 'ingresos_txt',
   'gastos', 'gastos_txt', 'pagos', 'pagos_txt', 'gasto_banca', 'gasto_banca_txt', 'cambio', 'sen_a_bil',
   'bil_a_sen', 'otros_ingresos', 'otros_ingresos_txt', 'total_pdv', 'recargas', 'saldo', 'notas',
-  'venta', 'banca', 'sencillo_total', 'banca_en_caja',
+  'venta', 'banca', 'sencillo_total', 'banca_en_caja', 'recogido', 'recogido_txt',
 ];
-const _textos = {'ingresos_txt', 'gastos_txt', 'pagos_txt', 'gasto_banca_txt', 'otros_ingresos_txt', 'notas'};
+const _textos = {'ingresos_txt', 'gastos_txt', 'pagos_txt', 'gasto_banca_txt', 'otros_ingresos_txt', 'notas', 'recogido_txt'};
 
 /// Tablas que se respaldan en Supabase (allá se llaman `cuentas_<tabla>`).
 const tablasRespaldo = {'dias': 'fecha', 'recargas': 'clave', 'nombres': 'telefono', 'abonos': 'id'};
@@ -31,7 +31,7 @@ class Db {
   static Future<void> open({String? ruta}) async {
     _db = await openDatabase(
       ruta ?? p.join(await getDatabasesPath(), 'cuentasdark.db'),
-      version: 2,
+      version: 3,
       onCreate: (db, v) async {
         for (final s in _schema) {
           await db.execute(s);
@@ -39,11 +39,20 @@ class Db {
       },
       onUpgrade: (db, de, a) async {
         if (de < 2) await db.execute('ALTER TABLE dias ADD COLUMN banca_en_caja REAL');
+        if (de < 3) {
+          await db.execute('ALTER TABLE dias ADD COLUMN recogido REAL');
+          await db.execute('ALTER TABLE dias ADD COLUMN recogido_txt TEXT');
+          await db.execute(_tpvMov);
+        }
       },
     );
   }
 
   static const _sync = 'updated_at INTEGER, synced INTEGER DEFAULT 0, deleted INTEGER DEFAULT 0';
+
+  /// Movimientos de caja de TPVDark (vista v_cuentas_dark_movimientos), para llenar el día solo.
+  static const _tpvMov = 'CREATE TABLE tpv_mov(uuid TEXT PRIMARY KEY, dia TEXT, tipo TEXT, categoria TEXT, '
+      'concepto TEXT, importe REAL, empleado TEXT)';
 
   static final _schema = [
     'CREATE TABLE dias(fecha TEXT PRIMARY KEY, '
@@ -60,6 +69,7 @@ class Db {
     'CREATE INDEX ix_art_art ON art_dia(articulo)',
     'CREATE TABLE tpv_dia(fecha TEXT PRIMARY KEY, ventas REAL, tickets INTEGER, actualizado INTEGER)',
     'CREATE TABLE kv(k TEXT PRIMARY KEY, v TEXT)',
+    _tpvMov,
   ];
 
   static int get now => DateTime.now().millisecondsSinceEpoch;

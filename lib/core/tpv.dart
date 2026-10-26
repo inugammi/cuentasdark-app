@@ -145,6 +145,27 @@ class Tpv {
     return Db.guardarRecargas(lista, 'tpv');
   }
 
+  /// Ingresos, retiros, recogidas y pagos a empleados de la caja (vista v_cuentas_dark_movimientos, TPVDark V163).
+  /// Se reemplazan los días leídos para que un movimiento borrado en la caja también se quite aquí.
+  Future<int> movimientosCaja(DateTime desde) async {
+    final filas = await _todo('v_cuentas_dark_movimientos?select=uuid,dia,tipo_cuentas,categoria,concepto,importe,'
+        'empleado_nombre&dia=gte.${iso(desde)}&order=fecha');
+    final b = Db.raw.batch()..delete('tpv_mov', where: 'dia>=?', whereArgs: [iso(desde)]);
+    var c = 0;
+    for (final x in filas) {
+      if (x['tipo_cuentas'] == 'ELIMINADO' || campoMovimiento('${x['tipo_cuentas']}', x['categoria'] as String?) == null) {
+        continue;
+      }
+      b.insert('tpv_mov', {
+        'uuid': x['uuid'], 'dia': '${x['dia']}'.substring(0, 10), 'tipo': x['tipo_cuentas'],
+        'categoria': x['categoria'], 'concepto': x['concepto'], 'importe': n(x['importe']), 'empleado': x['empleado_nombre'],
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      c++;
+    }
+    await b.commit(noResult: true);
+    return c;
+  }
+
   /// Trae todo lo del día a día: ventas y artículos de los últimos días y recargas de la caja.
   Future<String> sincronizar({int dias = 3}) async {
     final hoy = soloFecha(DateTime.now());
@@ -164,6 +185,10 @@ class Tpv {
     try {
       r = await recargasCaja(desde);
     } catch (_) {}
+    var m = -1;
+    try {
+      m = await movimientosCaja(desde);
+    } catch (_) {} // sin la vista (falta schema_supabase_v1_35.sql de TPVDark) no pasa nada
     await Db.setKv('tpvUltima', iso(hoy));
     if (r > 0) await Vigilante.limpiar();
     var msg = 'TPVDark: $v días de ventas, $a artículos/día';
@@ -172,7 +197,7 @@ class Tpv {
     } on _NoExiste {
       msg += '\nRespaldo: ejecuta supabase/cuentas_v1.sql para activarlo.';
     }
-    return '$msg${r > 0 ? ', $r recargas nuevas de la caja' : ''}.';
+    return '$msg${r > 0 ? ', $r recargas nuevas de la caja' : ''}${m > 0 ? ', $m movimientos de caja' : ''}.';
   }
 
   /// Fecha de la venta más vieja que hay en Supabase.
@@ -216,8 +241,8 @@ class Tpv {
             headers: {...h, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal'},
             body: jsonEncode([for (final x in lote) Map.of(x)..remove('synced')]));
         if (r.statusCode == 404) throw _NoExiste('cuentas_$t');
-        if (r.statusCode >= 300 && r.body.contains('banca_en_caja')) {
-          throw 'Falta un paso en Supabase: ejecuta supabase/cuentas_v2.sql (Más > TPVDark > Copiar SQL).';
+        if (r.statusCode >= 300 && RegExp('banca_en_caja|recogido').hasMatch(r.body)) {
+          throw 'Falta un paso en Supabase: ejecuta el SQL de Cuentas Dark (Más > TPVDark > Copiar SQL).';
         }
         if (r.statusCode >= 300) throw 'Respaldo $t: ${r.statusCode} ${r.body}';
         final b = Db.raw.batch();

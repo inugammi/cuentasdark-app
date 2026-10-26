@@ -36,6 +36,20 @@ void main() {
     expect(junto['banca'], 5000);
   });
 
+  test('movimientos de caja de TPVDark van a su renglón', () {
+    expect(campoMovimiento('RECOGIDA', 'RECOLECCION DE CAJA'), 'recogido_txt');
+    expect(campoMovimiento('INGRESO', 'FONDO DE CAJA'), null);
+    expect(campoMovimiento('INGRESO_FUERA_CAJA', 'OTRO INGRESO'), 'otros_ingresos_txt');
+    expect(campoMovimiento('RETIRO', 'PAGO A PROVEEDOR'), 'pagos_txt');
+    expect(campoMovimiento('PAGO_EMPLEADO', 'PAGO A EMPLEADO'), 'gastos_txt');
+    expect(lineaMovimiento({'importe': 350.0, 'concepto': 'abono noe 2026', 'categoria': 'ABONO CLIENTE'}), '350 abono noe');
+    expect(sumNumbers(lineaMovimiento({'importe': 1200, 'empleado': 'Luis', 'concepto': 'semana 43'})), 1200);
+    final ayer = {'fecha': '2026-10-19', 'caja': 0.0, 'cambio': 0.0, 'banca': 0.0, 'sencillo_total': 0.0};
+    final r = calcular({'fecha': '2026-10-20', 'b500': 2, 'recogido_txt': '2000 recogida'}, ayer);
+    expect(r['venta'], 3000);
+    expect(r['banca'], 3000);
+  });
+
   test('semanas de lunes a domingo y meses', () {
     expect(iso(inicio(Periodo.semana, DateTime(2026, 10, 25))), '2026-10-19');
     expect(iso(fin(Periodo.mes, DateTime(2026, 12))), '2027-01-01');
