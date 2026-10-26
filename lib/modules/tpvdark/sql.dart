@@ -1,4 +1,4 @@
-// Copia de supabase/cuentas_v1.sql (si cambias uno, cambia el otro).
+// Copia de supabase/cuentas_v1.sql + cuentas_v2.sql (si cambias uno, cambia el otro).
 const cuentasSql = r'''
 -- =====================================================================
 -- Cuentas Dark (app Android) · supabase/cuentas_v1.sql
@@ -64,4 +64,10 @@ begin
 end $$;
 
 create index if not exists ix_cuentas_recargas_fecha on public.cuentas_recargas (fecha);
+
+-- =====================================================================
+-- Cuentas Dark · supabase/cuentas_v2.sql  (app 1.2)
+-- Opción "Dejé la banca en caja" de cada día. Pégalo en SQL Editor > RUN. Idempotente.
+-- =====================================================================
+alter table public.cuentas_dias add column if not exists banca_en_caja double precision;
 ''';

@@ -2,7 +2,7 @@ name: cuentasdark
 description: "Cuentas diarias de Ciber Dark: caja, recargas, clientes y artículos de TPVDark."
 publish_to: 'none'
 
-version: 1.1.0+2
+version: 1.2.0+3
 
 environment:
   sdk: ^3.13.7

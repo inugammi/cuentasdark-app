@@ -36,14 +36,19 @@ Rec calcular(Rec d, Rec? ayer) {
     if (t != null && t.trim().isNotEmpty) r[k] = sumNumbers(t);
   }
   final a = ayer ?? const {};
-  final bil = billetes(r);
-  r['billetes'] = bil;
+  final contado = billetes(r);
+  r['billetes'] = contado;
+  // "Dejé la banca en caja": lo contado trae también la banca de ayer; se resta para sacar lo de hoy.
+  final bil = contado - (n(r['banca_en_caja']) == 1 ? n(a['banca']) : 0);
   r['venta'] = bil + n(r['sencillo']) - n(a['caja']) + n(r['gastos']) + n(r['pagos']) - n(a['cambio']) - n(r['ingresos']);
   r['banca'] = n(a['banca']) - n(r['gasto_banca']) + bil + n(r['sen_a_bil']) - n(r['bil_a_sen']) +
       n(r['otros_ingresos']) - n(r['cambio']);
   r['sencillo_total'] = n(a['sencillo_total']) - n(r['sen_a_bil']) - n(r['caja']) + n(r['sencillo']) + n(r['bil_a_sen']);
   return r;
 }
+
+/// Billetes que entraron hoy (sin la banca de ayer si se dejó en caja).
+double billetesHoy(Rec d, Rec? ayer) => billetes(d) - (n(d['banca_en_caja']) == 1 ? n(ayer?['banca']) : 0);
 
 double totalGlobal(Rec d) => n(d['banca']) + n(d['sencillo_total']);
 

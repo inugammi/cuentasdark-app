@@ -26,6 +26,16 @@ void main() {
     expect(totalGlobal(r), 22950);
   });
 
+  test('banca dejada en caja: se resta la banca de ayer', () {
+    final ayer = {'fecha': '2026-10-19', 'caja': 0.0, 'cambio': 0.0, 'banca': 2000.0, 'sencillo_total': 0.0};
+    final normal = calcular({'fecha': '2026-10-20', 'b500': 6}, ayer);
+    final junto = calcular({'fecha': '2026-10-20', 'b500': 10, 'banca_en_caja': 1}, ayer);
+    expect(junto['billetes'], 5000);
+    expect(billetesHoy(junto, ayer), 3000);
+    expect(junto['venta'], normal['venta']);
+    expect(junto['banca'], 5000);
+  });
+
   test('semanas de lunes a domingo y meses', () {
     expect(iso(inicio(Periodo.semana, DateTime(2026, 10, 25))), '2026-10-19');
     expect(iso(fin(Periodo.mes, DateTime(2026, 12))), '2027-01-01');

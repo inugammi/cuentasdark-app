@@ -16,6 +16,8 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
     Banca = Banca(ayer) − GastoBanca + Billetes + SencilloABillete − BilleteASencillo + OtrosIngresos − Cambio;
     SencilloTotal = SencTot(ayer) − SencilloABillete − Caja + Sencillo + BilleteASencillo; TotalGlobal = Banca + SencTot.
     Diferencia = Venta − TotalPDV + Recargas (hoja 2026; ajuste `diferenciaConRecargas`).
+    `banca_en_caja`=1 ("Dejé la banca en caja"): los billetes contados traen la banca de ayer; Venta/Banca usan
+    Billetes − Banca(ayer) (`billetesHoy`). `billetes` guarda lo contado.
   - Periodos día/semana(lunes-domingo)/mes/año; `leerFecha` y `filaRecarga` (lee filas del historial de TAE Pocket,
     formato 2025, 2026 y la página vieja "Recargas Más"); `claveRecarga` evita duplicados.
 - `lib/core/db.dart` — sqflite. Tablas: `dias` (fecha PK, columnas = `camposDia`, `calc`=0 si viene del Excel, 1 si se
@@ -33,7 +35,7 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
 - `lib/core/tae.dart` — WebView de taepocketplus.com; JS que junta celdas de todas las `<tr>`; `TaeAuto`.
 - `lib/core/charts.dart` — `Barras` y `Lineas` (fl_chart). `ui.dart` — `SelectorPeriodo`, `Dato(s)`, diálogos.
 - `lib/modules/*` — un módulo por carpeta, registrado en `lib/modules/registry.dart`.
-- `supabase/cuentas_v1.sql` = `lib/modules/tpvdark/sql.dart` (mantener iguales). Cambios nuevos: `cuentas_v2.sql`.
+- `supabase/cuentas_v1.sql` = `lib/modules/tpvdark/sql.dart` (mantener iguales). `cuentas_v2.sql` agrega `banca_en_caja` (sql.dart = v1 + v2). Cambios nuevos: `cuentas_v3.sql`.
 - `assets/historico.json.gz` — Excel unidos (generado con `tool/excel_a_json.py <carpeta con los xlsx> salida.json`
   y luego gzip; quitar abonos con fecha futura). 7,067 días (2005-12-20 a 2026-10-24), 19,550 recargas, 227 nombres.
 

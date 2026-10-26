@@ -28,6 +28,7 @@ class _DiaPageState extends State<DiaPage> {
   double? tpvVentas;
   (double, int)? recTae;
   var listo = false;
+  var bancaEnCaja = false;
 
   @override
   void initState() {
@@ -45,6 +46,7 @@ class _DiaPageState extends State<DiaPage> {
     final f = DateTime.parse(widget.fecha);
     recTae = (await Db.recargasPorDia(widget.fecha, iso(f.add(const Duration(days: 1)))))[widget.fecha];
     original = d;
+    bancaEnCaja = n(d['banca_en_caja']) == 1;
     for (final x in denominaciones) {
       ctl['b$x'] = TextEditingController(text: _txt(d['b$x']));
     }
@@ -84,6 +86,7 @@ class _DiaPageState extends State<DiaPage> {
       if (k != 'notas') d[k.replaceAll('_txt', '')] = sumNumbers(t);
     }
     d['saldo'] = original['saldo'];
+    d['banca_en_caja'] = bancaEnCaja ? 1 : 0;
     return calcular(d, ayer);
   }
 
@@ -147,7 +150,18 @@ class _DiaPageState extends State<DiaPage> {
           for (final x in denominaciones)
             SizedBox(width: 100, child: _num('b$x', '\$$x', ayuda: n(ctl['b$x']!.text) != 0 ? money(n(ctl['b$x']!.text) * x) : null)),
         ]),
-        Padding(padding: const EdgeInsets.only(top: 6), child: Text('Total billetes: ${money(n(r['billetes']))}')),
+        Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(bancaEnCaja
+                ? 'Contado ${money(n(r['billetes']))} · De hoy ${money(billetesHoy(r, ayer))}'
+                : 'Total billetes: ${money(n(r['billetes']))}')),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Dejé la banca en caja (conté todo junto)'),
+          subtitle: Text('Se resta la banca de ayer: ${money(n(ayer?['banca']))}'),
+          value: bancaEnCaja,
+          onChanged: (v) => setState(() => bancaEnCaja = v),
+        ),
         const SectionTitle('Caja'),
         _num('sencillo', 'Sencillo (monedas contadas)'),
         esp,

@@ -216,6 +216,9 @@ class Tpv {
             headers: {...h, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal'},
             body: jsonEncode([for (final x in lote) Map.of(x)..remove('synced')]));
         if (r.statusCode == 404) throw _NoExiste('cuentas_$t');
+        if (r.statusCode >= 300 && r.body.contains('banca_en_caja')) {
+          throw 'Falta un paso en Supabase: ejecuta supabase/cuentas_v2.sql (Más > TPVDark > Copiar SQL).';
+        }
         if (r.statusCode >= 300) throw 'Respaldo $t: ${r.statusCode} ${r.body}';
         final b = Db.raw.batch();
         for (final x in lote) {

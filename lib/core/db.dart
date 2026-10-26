@@ -14,7 +14,7 @@ const camposDia = [
   'b20', 'b50', 'b100', 'b200', 'b500', 'b1000', 'billetes', 'sencillo', 'caja', 'ingresos', 'ingresos_txt',
   'gastos', 'gastos_txt', 'pagos', 'pagos_txt', 'gasto_banca', 'gasto_banca_txt', 'cambio', 'sen_a_bil',
   'bil_a_sen', 'otros_ingresos', 'otros_ingresos_txt', 'total_pdv', 'recargas', 'saldo', 'notas',
-  'venta', 'banca', 'sencillo_total',
+  'venta', 'banca', 'sencillo_total', 'banca_en_caja',
 ];
 const _textos = {'ingresos_txt', 'gastos_txt', 'pagos_txt', 'gasto_banca_txt', 'otros_ingresos_txt', 'notas'};
 
@@ -31,11 +31,14 @@ class Db {
   static Future<void> open({String? ruta}) async {
     _db = await openDatabase(
       ruta ?? p.join(await getDatabasesPath(), 'cuentasdark.db'),
-      version: 1,
+      version: 2,
       onCreate: (db, v) async {
         for (final s in _schema) {
           await db.execute(s);
         }
+      },
+      onUpgrade: (db, de, a) async {
+        if (de < 2) await db.execute('ALTER TABLE dias ADD COLUMN banca_en_caja REAL');
       },
     );
   }
