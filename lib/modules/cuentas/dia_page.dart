@@ -125,11 +125,19 @@ class _DiaPageState extends State<DiaPage> {
 
   Future<void> _guardar() async {
     final t = Tpv(context.read<Settings>());
+    final nav = Navigator.of(context);
+    final msg = ScaffoldMessenger.of(context);
     await Db.guardarDia(_datos());
     avisarCambios();
     // Se sube de una vez para que TPVDark tome mañana el fondo de caja (cambio + caja).
-    if (t.configurado) t.respaldar().catchError((_) => '');
-    if (mounted) Navigator.pop(context);
+    nav.pop();
+    if (!t.configurado) return;
+    try {
+      await t.respaldar().timeout(const Duration(seconds: 20));
+      msg.showSnackBar(const SnackBar(content: Text('Día subido: TPVDark ya lo ve ✅')));
+    } catch (e) {
+      msg.showSnackBar(SnackBar(content: Text('No se pudo subir a TPVDark: $e'), duration: const Duration(seconds: 8)));
+    }
   }
 
   Widget _num(String k, String label, {String? ayuda}) => TextField(
