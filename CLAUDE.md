@@ -18,8 +18,9 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
     Diferencia = Venta − TotalPDV + Recargas (hoja 2026; ajuste `diferenciaConRecargas`).
     `banca_en_caja`=1 ("Dejé la banca en caja"): los billetes contados traen la banca de ayer; Venta/Banca usan
     Billetes − Banca(ayer) (`billetesHoy`). `billetes` guarda lo contado.
-    `recogido(_txt)` = dinero recogido de la caja en el día (TPVDark "Recoger dinero"); se suma a Billetes.
-  - `campoMovimiento`/`lineaMovimiento`: movimientos de caja de TPVDark → renglón del día: RECOGIDA→recogido,
+    Recogidas de TPVDark ("Recoger dinero") = SOLO informativas (monto y hora), NO suman (columnas `recogido(_txt)`
+    quedaron sin uso).
+  - `campoMovimiento`/`lineaMovimiento`: movimientos de caja de TPVDark → renglón del día (RECOGIDA→ninguno),
     INGRESO→ingresos (no FONDO DE CAJA), INGRESO_FUERA_CAJA→otros_ingresos, RETIRO→gastos (PAGO A PROVEEDOR→pagos),
     PAGO_EMPLEADO→gastos, RETIRO_FUERA_CAJA→gasto_banca.
   - Periodos día/semana(lunes-domingo)/mes/año; `leerFecha` y `filaRecarga` (lee filas del historial de TAE Pocket,
@@ -31,7 +32,8 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
   Lee `v_ventas_dia`, `v_articulos_dia` (si no existen, cae a `ventas`/`ventas_lineas`), `recargas` (estado=1),
   y respalda en `cuentas_dias|recargas|nombres|abonos`.
   `movimientosCaja` lee la vista `v_cuentas_dark_movimientos` (TPVDark V163, schema_supabase_v1_35.sql; tabla
-  `caja_movimientos`) a la tabla local `tpv_mov`. El día nuevo se llena solo; botón "Poner N que faltan".
+  `caja_movimientos`) a la tabla local `tpv_mov` (con hora `fecha` y `usuario`; pide `usuario_nombre`, si la vista
+  no lo tiene cae a `usuario`). El día nuevo se llena solo; botón "Poner N que faltan".
   Al guardar un día se respalda de inmediato: TPVDark V163 toma `cambio + caja` del último día como fondo inicial.
 - `lib/core/revision.dart` — Vigilante: `limpiar()` quita recargas repetidas (origen='duplicado', deleted=1,
   restaurables) y `revisar()` lista avisos (días sin capturar, diferencias ≥ $50 vs PDV, recargas que no coinciden,

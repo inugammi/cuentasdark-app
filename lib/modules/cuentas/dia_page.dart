@@ -20,7 +20,7 @@ class DiaPage extends StatefulWidget {
 }
 
 const _numeros = ['sencillo', 'caja', 'cambio', 'sen_a_bil', 'bil_a_sen', 'total_pdv', 'recargas'];
-const _textos = ['ingresos_txt', 'gastos_txt', 'pagos_txt', 'gasto_banca_txt', 'otros_ingresos_txt', 'notas', 'recogido_txt'];
+const _textos = ['ingresos_txt', 'gastos_txt', 'pagos_txt', 'gasto_banca_txt', 'otros_ingresos_txt', 'notas'];
 
 class _DiaPageState extends State<DiaPage> {
   final ctl = <String, TextEditingController>{};
@@ -157,20 +157,49 @@ class _DiaPageState extends State<DiaPage> {
   }
 
   static const _destino = {
-    'recogido_txt': 'Recogido', 'ingresos_txt': 'Ingresos', 'otros_ingresos_txt': 'Otros ingresos',
+    'ingresos_txt': 'Ingresos', 'otros_ingresos_txt': 'Otros ingresos',
     'gastos_txt': 'Gastos', 'pagos_txt': 'Pagos', 'gasto_banca_txt': 'Gasto de banca',
   };
 
-  Widget _cajaTpv() {
-    final falta = _faltantes();
+  /// "3:15 pm" de la fecha-hora del movimiento.
+  String _hora(Object? f) {
+    final d = DateTime.tryParse('${f ?? ''}');
+    return d == null ? '' : DateFormat('h:mm a', 'es').format(d);
+  }
+
+  /// Lo recogido de la caja en el día: solo informa cuánto y a qué hora, no entra en la cuenta.
+  Widget _recogido() {
+    final rec = movs.where((m) => m['tipo'] == 'RECOGIDA').toList();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Caja de TPVDark (${movs.length})', style: Theme.of(context).textTheme.titleSmall),
-          for (final m in movs)
-            Text('${money(n(m['importe']))} · ${m['empleado'] ?? m['concepto'] ?? m['categoria']} → '
-                '${_destino[campoMovimiento('${m['tipo']}', m['categoria'] as String?)]}'),
+          Text('Recogido de la caja: ${money(rec.fold(0.0, (a, m) => a + n(m['importe'])))} (no suma)',
+              style: Theme.of(context).textTheme.titleSmall),
+          for (final m in rec)
+            Text('${_hora(m['fecha'])} · ${money(n(m['importe']))}${m['usuario'] != null ? ' · ${m['usuario']}' : ''}'),
+        ]),
+      ),
+    );
+  }
+
+  Widget _cajaTpv() {
+    final falta = _faltantes();
+    final lista = movs.where((m) => m['tipo'] != 'RECOGIDA').toList();
+    if (lista.isEmpty) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Caja de TPVDark (${lista.length})', style: Theme.of(context).textTheme.titleSmall),
+          for (final m in lista)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('${_hora(m['fecha'])} · ${money(n(m['importe']))} · '
+                  '${m['empleado'] ?? m['concepto'] ?? m['categoria']}'
+                  '${m['usuario'] != null ? ' · lo puso ${m['usuario']}' : ''} → '
+                  '${_destino[campoMovimiento('${m['tipo']}', m['categoria'] as String?)]}'),
+            ),
           if (falta.isNotEmpty)
             Align(
               alignment: Alignment.centerRight,
@@ -227,8 +256,7 @@ class _DiaPageState extends State<DiaPage> {
             child: Text(bancaEnCaja
                 ? 'Contado ${money(n(r['billetes']))} · De hoy ${money(billetesHoy(r, ayer))}'
                 : 'Total billetes: ${money(n(r['billetes']))}')),
-        esp,
-        _texto('recogido_txt', 'Recogido de la caja en el día', '2000 recogida 3pm'),
+        if (movs.any((m) => m['tipo'] == 'RECOGIDA')) _recogido(),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Dejé la banca en caja (conté todo junto)'),

@@ -31,7 +31,7 @@ class Db {
   static Future<void> open({String? ruta}) async {
     _db = await openDatabase(
       ruta ?? p.join(await getDatabasesPath(), 'cuentasdark.db'),
-      version: 3,
+      version: 4,
       onCreate: (db, v) async {
         for (final s in _schema) {
           await db.execute(s);
@@ -43,6 +43,9 @@ class Db {
           await db.execute('ALTER TABLE dias ADD COLUMN recogido REAL');
           await db.execute('ALTER TABLE dias ADD COLUMN recogido_txt TEXT');
           await db.execute(_tpvMov);
+        } else if (de < 4) {
+          await db.execute('ALTER TABLE tpv_mov ADD COLUMN fecha TEXT');
+          await db.execute('ALTER TABLE tpv_mov ADD COLUMN usuario TEXT');
         }
       },
     );
@@ -52,7 +55,7 @@ class Db {
 
   /// Movimientos de caja de TPVDark (vista v_cuentas_dark_movimientos), para llenar el día solo.
   static const _tpvMov = 'CREATE TABLE tpv_mov(uuid TEXT PRIMARY KEY, dia TEXT, tipo TEXT, categoria TEXT, '
-      'concepto TEXT, importe REAL, empleado TEXT)';
+      'concepto TEXT, importe REAL, empleado TEXT, fecha TEXT, usuario TEXT)';
 
   static final _schema = [
     'CREATE TABLE dias(fecha TEXT PRIMARY KEY, '

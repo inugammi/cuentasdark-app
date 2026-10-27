@@ -148,17 +148,25 @@ class Tpv {
   /// Ingresos, retiros, recogidas y pagos a empleados de la caja (vista v_cuentas_dark_movimientos, TPVDark V163).
   /// Se reemplazan los días leídos para que un movimiento borrado en la caja también se quite aquí.
   Future<int> movimientosCaja(DateTime desde) async {
-    final filas = await _todo('v_cuentas_dark_movimientos?select=uuid,dia,tipo_cuentas,categoria,concepto,importe,'
-        'empleado_nombre&dia=gte.${iso(desde)}&order=fecha');
+    const cols = 'uuid,dia,fecha,tipo_cuentas,categoria,concepto,importe,empleado_nombre';
+    final q = '&dia=gte.${iso(desde)}&order=fecha';
+    List<Map<String, dynamic>> filas;
+    try {
+      filas = await _todo('v_cuentas_dark_movimientos?select=$cols,usuario_nombre$q');
+    } on _NoExiste {
+      rethrow;
+    } catch (_) {
+      filas = await _todo('v_cuentas_dark_movimientos?select=$cols,usuario$q'); // vista sin usuario_nombre
+    }
     final b = Db.raw.batch()..delete('tpv_mov', where: 'dia>=?', whereArgs: [iso(desde)]);
     var c = 0;
     for (final x in filas) {
-      if (x['tipo_cuentas'] == 'ELIMINADO' || campoMovimiento('${x['tipo_cuentas']}', x['categoria'] as String?) == null) {
-        continue;
-      }
+      final tipo = '${x['tipo_cuentas']}';
+      if (tipo != 'RECOGIDA' && campoMovimiento(tipo, x['categoria'] as String?) == null) continue;
       b.insert('tpv_mov', {
-        'uuid': x['uuid'], 'dia': '${x['dia']}'.substring(0, 10), 'tipo': x['tipo_cuentas'],
-        'categoria': x['categoria'], 'concepto': x['concepto'], 'importe': n(x['importe']), 'empleado': x['empleado_nombre'],
+        'uuid': x['uuid'], 'dia': '${x['dia']}'.substring(0, 10), 'tipo': tipo, 'categoria': x['categoria'],
+        'concepto': x['concepto'], 'importe': n(x['importe']), 'empleado': x['empleado_nombre'],
+        'fecha': '${x['fecha'] ?? ''}', 'usuario': x['usuario_nombre'] ?? (x['usuario'] == null ? null : 'cajero ${x['usuario']}'),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       c++;
     }
