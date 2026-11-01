@@ -86,7 +86,7 @@ class _TpvdarkPageState extends State<TpvdarkPage> {
             OutlinedButton.icon(
                 onPressed: trabajando ? null : () => _hacer((t) => t.probar()),
                 icon: const Icon(Icons.wifi_tethering),
-                label: const Text('Probar')),
+                label: const Text('Revisar conexión')),
             FilledButton.icon(
                 onPressed: trabajando ? null : () => _hacer((t) => t.sincronizar()),
                 icon: const Icon(Icons.sync),

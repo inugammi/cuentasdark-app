@@ -1,6 +1,6 @@
 # Cuentas Dark · cuentas diarias del Ciber
 
-App Android (Flutter) que reemplaza los Excel **Control Ciber** y **TAEPOCKET / RECARGAS** de Ciber Dark,
+App Android y Windows (Flutter) que reemplaza los Excel **Control Ciber** y **TAEPOCKET / RECARGAS** de Ciber Dark,
 y toma de **TPVDark** lo del día a día. Funciona sin internet (base de datos en el teléfono) y se respalda en el Supabase de TPVDark.
 
 ## Qué hace
@@ -20,6 +20,13 @@ y toma de **TPVDark** lo del día a día. Funciona sin internet (base de datos e
 Cada cambio en `main` compila el APK con GitHub Actions. Descárgalo en **Releases** (`CuentasDark.apk`) y ábrelo en el teléfono
 (permite "instalar apps desconocidas"). Todos los APK se firman con la misma llave (secreto `KEYSTORE_BASE64` del repo; no se sube al código),
 así que las actualizaciones se instalan encima sin perder datos. Mantén el repo privado.
+
+## Instalar en la PC (Windows 10/11, 64 bits)
+En **Releases** descarga `CuentasDark-Setup.exe` y ábrelo (no pide administrador; si Windows muestra "Windows protegió su PC",
+toca *Más información > Ejecutar de todas formas*). Crea el acceso en el escritorio y en el menú Inicio. Para actualizar,
+instala el nuevo encima: tus datos están en `%APPDATA%\CuentasDark` y no se borran. También hay un `CuentasDark-PC-portable.zip`.
+En la PC pon los mismos datos de Supabase (Más > TPVDark) y toca **Traer ahora**: baja todo lo que el celular ya respaldó.
+TAE Pocket en la PC se abre en el navegador: copia la tabla del historial y en Recargas > 🌐 toca **Pegar lo copiado**.
 
 ## Conectar con TPVDark
 1. Supabase (una vez): SQL Editor > New query > pega `supabase/cuentas_v1.sql` > RUN (también se copia desde la app: Más > TPVDark).

@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard;
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'calc.dart';
@@ -11,6 +14,10 @@ import 'module.dart';
 import 'revision.dart';
 import 'settings.dart';
 import 'ui.dart';
+
+/// El WebView dentro de la app solo existe en el celular. En la PC (Windows) TAE Pocket se abre en el
+/// navegador y el historial se copia y se pega.
+bool get hayWebView => Platform.isAndroid || Platform.isIOS;
 
 /// JavaScript que junta el texto de cada celda de todas las tablas de la página (y de sus marcos).
 const _jsTablas = r'''
@@ -51,13 +58,71 @@ Future<(int nuevas, int leidas, bool login)> leerTae(WebViewController c) async 
 /// Pantalla con la página de TAE Pocket adentro de la app.
 /// Entras una vez con tu usuario (la sesión se queda guardada), abres el historial
 /// y tocas "Leer". Con "Usar para cada día" la app lo lee sola cada vez que la abres.
-class TaePage extends StatefulWidget {
+class TaePage extends StatelessWidget {
   const TaePage({super.key});
   @override
-  State<TaePage> createState() => _TaePageState();
+  Widget build(BuildContext context) => hayWebView ? const _TaeWeb() : const _TaePc();
 }
 
-class _TaePageState extends State<TaePage> {
+class _TaePc extends StatefulWidget {
+  const _TaePc();
+  @override
+  State<_TaePc> createState() => _TaePcState();
+}
+
+class _TaeWeb extends StatefulWidget {
+  const _TaeWeb();
+  @override
+  State<_TaeWeb> createState() => _TaePageState();
+}
+
+/// TAE Pocket en la PC: abre el navegador y lee lo que copies del historial.
+class _TaePcState extends State<_TaePc> {
+  Future<void> _abrir() async {
+    final s = context.read<Settings>();
+    final url = Uri.parse(s.taeHistorial.isNotEmpty ? s.taeHistorial : s.taeUrl);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication) && mounted) toast(context, 'No pude abrir el navegador.');
+  }
+
+  Future<void> _pegar() async {
+    final t = (await Clipboard.getData('text/plain'))?.text ?? '';
+    if (t.trim().isEmpty) {
+      if (mounted) toast(context, 'No hay nada copiado. Selecciona la tabla del historial y presiona Ctrl+C.');
+      return;
+    }
+    final recs = pegarRecargas(t);
+    final nuevas = await Db.guardarRecargas(recs, 'pegado');
+    if (recs.isNotEmpty) {
+      await Db.setKv('taeUltima', iso(DateTime.now()));
+      await Vigilante.limpiar();
+    }
+    avisarCambios();
+    if (mounted) toast(context, recs.isEmpty ? 'No encontré recargas en lo que copiaste.' : 'Leí ${recs.length} recargas: $nuevas nuevas.');
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('TAE Pocket')),
+        body: ListView(padding: const EdgeInsets.all(16), children: [
+          const Text('En la PC TAE Pocket se abre en tu navegador:'),
+          const SizedBox(height: 8),
+          const Text('1. Toca "Abrir TAE Pocket" y entra con tu usuario.\n'
+              '2. Abre el historial o reporte de ventas.\n'
+              '3. Selecciona toda la tabla con el mouse (o Ctrl+A) y cópiala con Ctrl+C.\n'
+              '4. Regresa aquí y toca "Pegar lo copiado".'),
+          const SizedBox(height: 16),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton.icon(onPressed: _abrir, icon: const Icon(Icons.open_in_browser), label: const Text('Abrir TAE Pocket')),
+            FilledButton.icon(onPressed: _pegar, icon: const Icon(Icons.content_paste), label: const Text('Pegar lo copiado')),
+          ]),
+          const SizedBox(height: 16),
+          const Text('Las recargas cobradas en la caja de TPVDark llegan solas. Si también usas el celular, '
+              'lo que lea allá de TAE Pocket se pasa a la PC con el respaldo.'),
+        ]),
+      );
+}
+
+class _TaePageState extends State<_TaeWeb> {
   late final WebViewController c;
   var cargando = true;
 
@@ -136,7 +201,7 @@ class _TaeAutoState extends State<TaeAuto> {
 
   Future<void> _quizas() async {
     final s = context.read<Settings>();
-    if (!s.taeAuto || s.taeHistorial.isEmpty) return;
+    if (!hayWebView || !s.taeAuto || s.taeHistorial.isEmpty) return;
     if (await Db.kv('taeUltima') == iso(DateTime.now()) && await Db.kv('taeAuto') == iso(DateTime.now())) return;
     final ctl = WebViewController()..setJavaScriptMode(JavaScriptMode.unrestricted);
     ctl.setNavigationDelegate(NavigationDelegate(onPageFinished: (_) async {

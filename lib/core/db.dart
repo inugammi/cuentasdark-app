@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' show sqfliteFfiInit, databaseFactoryFfi;
 
 import 'calc.dart';
 export 'calc.dart' show Rec;
@@ -28,9 +29,26 @@ class Db {
   static late Database _db;
   static Database get raw => _db;
 
+  /// Carpeta de la base: en Android la de siempre; en Windows %APPDATA%\\CuentasDark
+  /// (la carpeta de instalación no se puede escribir y así sobrevive a las actualizaciones).
+  static Future<String> carpeta() async {
+    if (!esEscritorio) return getDatabasesPath();
+    final base = Platform.environment['APPDATA'] ?? Platform.environment['HOME'] ?? '.';
+    final dir = Directory(p.join(base, 'CuentasDark'));
+    await dir.create(recursive: true);
+    return dir.path;
+  }
+
+  static bool get esEscritorio => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
   static Future<void> open({String? ruta}) async {
+    if (esEscritorio) {
+      // En la PC sqflite no trae SQLite: se usa la versión FFI (sqlite3.dll va dentro del instalador).
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
     _db = await openDatabase(
-      ruta ?? p.join(await getDatabasesPath(), 'cuentasdark.db'),
+      ruta ?? p.join(await carpeta(), 'cuentasdark.db'),
       version: 4,
       onCreate: (db, v) async {
         for (final s in _schema) {
@@ -103,8 +121,12 @@ class Db {
     return importarJson(data, marca: true);
   }
 
+  /// El histórico de los Excel es igual en todos los equipos (viene dentro de la app), así que entra como
+  /// "ya respaldado" y con `updated_at` = 1: nunca se sube y cualquier cambio hecho en otro equipo
+  /// (celular o PC) que ya esté en Supabase le gana al bajar. Antes entraba con la hora de instalación y una
+  /// instalación nueva (p. ej. en la PC) subía todo el Excel otra vez encima de las correcciones del celular.
   static Future<String> importarJson(Map<String, dynamic> data, {bool marca = false}) async {
-    final t = now;
+    const t = 1;
     final dias = (data['dias'] as List).cast<Map<String, dynamic>>();
     final rec = (data['recargas'] as List).cast<Map<String, dynamic>>();
     final ab = (data['abonos'] as List).cast<Map<String, dynamic>>();
@@ -112,25 +134,25 @@ class Db {
     await _db.transaction((tx) async {
       var b = tx.batch();
       for (final d in dias) {
-        final row = <String, Object?>{'fecha': d['fecha'], 'calc': 0, 'updated_at': t, 'synced': 0};
+        final row = <String, Object?>{'fecha': d['fecha'], 'calc': 0, 'updated_at': t, 'synced': 1};
         for (final c in camposDia) {
           if (d[c] != null) row[c] = d[c];
         }
         b.insert('dias', row, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       for (final r in rec) {
-        b.insert('recargas', {...r, 'clave': claveRecarga(r), 'origen': 'excel', 'updated_at': t, 'synced': 0},
+        b.insert('recargas', {...r, 'clave': claveRecarga(r), 'origen': 'excel', 'updated_at': t, 'synced': 1},
             conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       for (final a in ab) {
-        b.insert('abonos', {...a, 'id': '${a['proveedor']}|${a['fecha']}|${a['monto']}', 'updated_at': t, 'synced': 0},
+        b.insert('abonos', {...a, 'id': '${a['proveedor']}|${a['fecha']}|${a['monto']}', 'updated_at': t, 'synced': 1},
             conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       for (final x in nom) {
-        b.insert('nombres', {...x, 'updated_at': t, 'synced': 0}, conflictAlgorithm: ConflictAlgorithm.ignore);
+        b.insert('nombres', {...x, 'updated_at': t, 'synced': 1}, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
       await b.commit(noResult: true);
-      if (marca) await tx.insert('kv', {'k': 'historico', 'v': '$t'}, conflictAlgorithm: ConflictAlgorithm.replace);
+      if (marca) await tx.insert('kv', {'k': 'historico', 'v': '$now'}, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     return 'Histórico cargado: ${dias.length} días, ${rec.length} recargas, ${nom.length} nombres.';
   }
@@ -251,6 +273,8 @@ class Db {
         if (fx == null || fx.difference(fa).inMinutes > minutosDuplicado) break;
         if ((n(x['monto']) - n(a['monto'])).abs() > 1) continue;
         if (!esMisma(a, x)) continue;
+        // Una que el usuario restauró a mano no se vuelve a quitar (en este equipo ni en otro).
+        if (a['origen'] == 'restaurada' || x['origen'] == 'restaurada') continue;
         // Se queda la que tiene folio; si las dos tienen o ninguna, la primera.
         final quitar = _folio(a).isEmpty && _folio(x).isNotEmpty ? a : x;
         b.update('recargas', {'deleted': 1, 'origen': 'duplicado', 'synced': 0, 'updated_at': now},

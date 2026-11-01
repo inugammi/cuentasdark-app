@@ -53,9 +53,57 @@ class Tpv {
     }
   }
 
+  /// Revisa paso a paso la conexión: entrada, tablas de TPVDark, vistas y tablas del respaldo.
   Future<String> probar() async {
-    await _get('ventas?select=uuid&limit=1');
-    return 'Conexión con TPVDark correcta ✅';
+    if (!configurado) return '⚠ Falta poner la URL y la anon key.';
+    final out = <String>[];
+    try {
+      _token = null;
+      await _h();
+      out.add(s.sbEmail.isEmpty ? '⚠ Sin correo: se entra solo con la anon key (las tablas con RLS no van a responder).' : '✅ Entré a Supabase como ${s.sbEmail}');
+    } catch (e) {
+      return '❌ $e';
+    }
+    Future<void> paso(String nombre, String ruta, String Function(List<Map<String, dynamic>> r) ok, {String? falta}) async {
+      try {
+        out.add('✅ $nombre: ${ok(await _get(ruta))}');
+      } on _NoExiste {
+        out.add('❌ $nombre: no existe${falta != null ? ' ($falta)' : ''}');
+      } catch (e) {
+        final t = '$e';
+        if (RegExp('banca_en_caja|recogido').hasMatch(t)) {
+          out.add('❌ $nombre: faltan columnas nuevas (SQL de Cuentas Dark)');
+          return;
+        }
+        out.add('❌ $nombre: ${t.length > 160 ? '${t.substring(0, 160)}…' : t}');
+      }
+    }
+
+    String ultimo(List<Map<String, dynamic>> r, String c) => r.isEmpty ? 'vacía' : 'último ${r.first[c]}';
+    String sub(List<Map<String, dynamic>> r) {
+      if (r.isEmpty) return 'vacía (todavía no se sube nada)';
+      final ms = n(r.first['updated_at']).toInt();
+      return 'último cambio subido ${ms > 1 ? DateTime.fromMillisecondsSinceEpoch(ms).toString().substring(0, 16) : '-'}';
+    }
+
+    await paso('Ventas de TPVDark', 'ventas?select=fecha&order=fecha.desc&limit=1', (r) => ultimo(r, 'fecha'));
+    await paso('Ventas por día', 'v_ventas_dia?select=dia&order=dia.desc&limit=1', (r) => ultimo(r, 'dia'), falta: 'SQL de Cuentas Dark');
+    await paso('Artículos por día', 'v_articulos_dia?select=dia&order=dia.desc&limit=1', (r) => ultimo(r, 'dia'), falta: 'SQL de Cuentas Dark');
+    await paso('Recargas de la caja', 'recargas?select=fecha&order=fecha.desc&limit=1', (r) => ultimo(r, 'fecha'));
+    await paso('Movimientos de caja', 'v_cuentas_dark_movimientos?select=fecha&order=fecha.desc&limit=1', (r) => ultimo(r, 'fecha'),
+        falta: 'schema_supabase_v1_35.sql de TPVDark');
+    await paso('Respaldo de días', 'cuentas_dias?select=fecha,updated_at,banca_en_caja,recogido&order=updated_at.desc&limit=1', sub,
+        falta: 'SQL de Cuentas Dark');
+    for (final t in ['recargas', 'nombres', 'abonos']) {
+      await paso('Respaldo de $t', 'cuentas_$t?select=updated_at&order=updated_at.desc&limit=1', sub, falta: 'SQL de Cuentas Dark');
+    }
+    var pendientes = 0;
+    for (final t in tablasRespaldo.keys) {
+      pendientes += (await Db.raw.rawQuery('SELECT COUNT(*) c FROM $t WHERE synced=0')).first['c'] as int;
+    }
+    out.add(pendientes == 0 ? '✅ Todo lo de este equipo ya está respaldado.' : '⏳ $pendientes cambios de este equipo esperan subirse (toca Respaldar cuentas).');
+    if (out.any((x) => x.contains('SQL de Cuentas Dark'))) out.add('👉 Corre el SQL de abajo (Copiar SQL de instalación) en Supabase.');
+    return out.join('\n');
   }
 
   /// Ventas por día (sin anuladas) -> tabla tpv_dia y campo "total pdv" de cada día.
@@ -236,12 +284,22 @@ class Tpv {
   }
 
   // ---------------- Respaldo de las cuentas ----------------
-  /// Sube lo que cambió en el teléfono y baja lo que cambió en otro teléfono.
+  /// Baja lo que cambió en otro equipo (celular o PC) y sube lo que cambió en este.
   Future<String> respaldar() async {
     var subidos = 0, bajados = 0;
     final h = await _h();
     for (final e in tablasRespaldo.entries) {
       final t = e.key;
+      // Primero baja y luego sube: así un cambio más nuevo de otro equipo no se pisa con uno viejo de aquí.
+      final desde = int.tryParse(await Db.kv('bajado_$t') ?? '') ?? 0;
+      final inicio = Db.now;
+      for (final x in await _todo('cuentas_$t?select=*&updated_at=gt.$desde&order=updated_at')) {
+        final local = await Db.raw.query(t, where: '${e.value}=?', whereArgs: [x[e.value]]);
+        if (local.isNotEmpty && n(local.first['updated_at']) >= n(x['updated_at'])) continue;
+        await Db.raw.insert(t, {...x, 'synced': 1}, conflictAlgorithm: ConflictAlgorithm.replace);
+        bajados++;
+      }
+      await Db.setKv('bajado_$t', '$inicio');
       while (true) {
         final lote = await Db.raw.query(t, where: 'synced=0', limit: 500);
         if (lote.isEmpty) break;
@@ -260,15 +318,6 @@ class Tpv {
         await b.commit(noResult: true);
         subidos += lote.length;
       }
-      final desde = int.tryParse(await Db.kv('bajado_$t') ?? '') ?? 0;
-      final inicio = Db.now;
-      for (final x in await _todo('cuentas_$t?select=*&updated_at=gt.$desde&order=updated_at')) {
-        final local = await Db.raw.query(t, where: '${e.value}=?', whereArgs: [x[e.value]]);
-        if (local.isNotEmpty && n(local.first['updated_at']) >= n(x['updated_at'])) continue;
-        await Db.raw.insert(t, {...x, 'synced': 1}, conflictAlgorithm: ConflictAlgorithm.replace);
-        bajados++;
-      }
-      await Db.setKv('bajado_$t', '$inicio');
     }
     return 'Respaldo: $subidos subidos, $bajados bajados';
   }

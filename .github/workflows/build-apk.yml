@@ -1,4 +1,4 @@
-name: Compilar APK
+name: Compilar APK y Windows
 
 on:
   push:
@@ -72,3 +72,50 @@ jobs:
             CuentasDark.apk
             CuentasDark-celular-antiguo-32bits.apk
             SHA256.txt
+
+  # Versión para la PC: CuentasDark-Setup.exe (instalador) y CuentasDark-PC-portable.zip, en el mismo Release.
+  windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.8"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+      - name: flutter build windows
+        run: flutter build windows --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
+      - name: Agregar runtime de Visual C++ (para PCs que no lo tienen)
+        shell: pwsh
+        run: |
+          $rel = "build\windows\x64\runner\Release"
+          foreach ($d in "msvcp140.dll","vcruntime140.dll","vcruntime140_1.dll") { Copy-Item "$env:WINDIR\System32\$d" $rel -ErrorAction Continue }
+          Get-ChildItem $rel | Select-Object Name, Length | Format-Table
+          if (-not (Get-ChildItem $rel -Recurse -Filter "*sqlite*.dll")) { Write-Warning "No veo sqlite3.dll en la carpeta de Release" }
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DMyVersion=1.0.${{ github.run_number }}" installer\CuentasDark.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath dist\CuentasDark-PC-portable.zip
+          Get-FileHash dist\* -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Out-File "$env:RUNNER_TEMP\SHA256-PC.txt" -Encoding ascii
+          Move-Item "$env:RUNNER_TEMP\SHA256-PC.txt" dist\SHA256-PC.txt
+          Get-ChildItem dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CuentasDark-windows
+          path: dist/*
+      - name: Agregar al Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Cuentas Dark v1.0.${{ github.run_number }}
+          files: |
+            dist/CuentasDark-Setup.exe
+            dist/CuentasDark-PC-portable.zip
+            dist/SHA256-PC.txt

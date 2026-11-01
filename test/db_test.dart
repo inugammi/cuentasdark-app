@@ -15,6 +15,13 @@ void main() {
     await Db.importarJson(data as Map<String, dynamic>);
   });
 
+  test('el histórico entra como ya respaldado (una instalación nueva no lo vuelve a subir)', () async {
+    for (final t in tablasRespaldo.keys) {
+      final r = await Db.raw.rawQuery("SELECT COUNT(*) c FROM $t WHERE synced=0 OR updated_at>1");
+      expect(r.first['c'], 0, reason: t);
+    }
+  });
+
   test('el histórico trae todos los años y recargas', () async {
     final d = await Db.raw.rawQuery('SELECT MIN(fecha) a, MAX(fecha) b, COUNT(*) c FROM dias');
     expect(d.first['a'], '2005-12-20');

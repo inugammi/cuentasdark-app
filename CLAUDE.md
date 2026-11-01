@@ -1,10 +1,10 @@
 # Cuentas Dark — memoria del proyecto
 
-App Android (Flutter) de cuentas diarias de Ciber Dark. Reemplaza los Excel "Control Ciber.xlsm" y
+App Android y Windows (Flutter) de cuentas diarias de Ciber Dark. Reemplaza los Excel "Control Ciber.xlsm" y
 "TAEPOCKET AAAA.xlsx"/"RECARGAS AAAA.xlsx" y lee TPVDark por Supabase. Misma estructura que `inugammi/darkelectronic-app`.
 
 Responder en español, directo y conciso. El usuario no compila: el APK lo hace GitHub Actions al hacer push a `main`
-(Releases > CuentasDark.apk). La llave de firma va en el secreto KEYSTORE_BASE64 (nunca subir el .jks). Antes de subir: `flutter analyze` y `flutter test` deben pasar.
+(Releases > CuentasDark.apk; para la PC CuentasDark-Setup.exe y CuentasDark-PC-portable.zip, job `windows`). La llave de firma va en el secreto KEYSTORE_BASE64 (nunca subir el .jks). Antes de subir: `flutter analyze` y `flutter test` deben pasar.
 
 ## Mapa
 - `lib/main.dart` — arranque: carga el histórico la primera vez, trae TPVDark (si `autoSync`), barra inferior con los
@@ -63,3 +63,20 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
 
 ## No leer (ruido)
 `build/`, `.dart_tool/`, `android/.gradle`, `assets/historico.json.gz` (binario; usar consultas o el script).
+
+## Versión de Windows (v1.5, nov 2026)
+- `windows/` generado con `flutter create --platforms=windows` (BINARY_NAME CuentasDark, título "Cuentas Dark", icono
+  `windows/runner/resources/app_icon.ico` = ic_launcher). Instalador: `installer/CuentasDark.iss` (Inno Setup, sin admin,
+  se instala en %LOCALAPPDATA%\Programs\CuentasDark; el job `windows` copia msvcp140/vcruntime140(_1).dll al Release).
+- En escritorio `Db.open` usa sqflite FFI (`sqfliteFfiInit` + `databaseFactoryFfi`; sqlite3 3.x trae SQLite por build hooks)
+  y la base va en %APPDATA%\CuentasDark\cuentasdark.db (`Db.carpeta`). En Android sigue `getDatabasesPath()`.
+- webview_flutter no existe en Windows: `hayWebView` (tae.dart). En la PC TAE Pocket se abre en el navegador
+  (url_launcher) y se usa "Pegar lo copiado"; `TaeAuto` no hace nada.
+- El histórico del asset entra con `updated_at`=1 y `synced`=1 (antes con la hora de instalación y synced=0: una
+  instalación nueva subía todo el Excel encima de las correcciones del celular). `respaldar()` BAJA primero y luego SUBE.
+  `limpiarDuplicados` no vuelve a quitar recargas con origen='restaurada'.
+- Más > TPVDark > "Revisar conexión" (`Tpv.probar`): entrada, ventas, vistas, movimientos, tablas cuentas_* (último
+  updated_at subido) y cuántos cambios locales faltan por subir.
+- Supabase revisado 1/nov/2026 desde la PC: proyecto de TPVDark; existen cuentas_dias (con banca_en_caja y recogido),
+  cuentas_recargas/nombres/abonos, v_ventas_dia, v_articulos_dia, v_cuentas_dark_movimientos. Último guardado aplicado
+  por TPVDark (CUENTAS_DARK_FONDO_UPD) = 30/oct/2026 22:54. Con anon key se ven 0 filas (RLS authenticated): es normal.
