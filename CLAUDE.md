@@ -80,3 +80,8 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
 - Supabase revisado 1/nov/2026 desde la PC: proyecto de TPVDark; existen cuentas_dias (con banca_en_caja y recogido),
   cuentas_recargas/nombres/abonos, v_ventas_dia, v_articulos_dia, v_cuentas_dark_movimientos. Último guardado aplicado
   por TPVDark (CUENTAS_DARK_FONDO_UPD) = 30/oct/2026 22:54. Con anon key se ven 0 filas (RLS authenticated): es normal.
+
+## Fotos de clientes (Vigilante V3c, nov 2026)
+- El Vigilante (D:\Mis Documentos\Desktop\Vigilante, cotejo con el DVR) da de alta en `nombres` los teléfonos de
+  recarga sin nombre ("RECARGA <COMPAÑÍA> dd/mm/aa hh:mm", synced=0) y deja la foto en %APPDATA%\CuentasDark\fotos\<tel>.jpg.
+- `fotoCliente()` (clientes_module.dart) la muestra en Clientes y en la ficha. Solo en la PC (la foto no sube a Supabase).
