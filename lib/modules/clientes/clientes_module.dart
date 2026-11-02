@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as pth;
 
 import '../../core/calc.dart';
 import '../../core/charts.dart';
@@ -7,6 +10,15 @@ import '../../core/db.dart';
 import '../../core/module.dart';
 import '../../core/settings.dart';
 import '../../core/ui.dart';
+
+/// Foto del cliente que deja el Vigilante (cotejo con el video del DVR) en
+/// %APPDATA%\CuentasDark\fotos\<teléfono>.jpg. Solo existe en la PC.
+File? fotoCliente(String telefono) {
+  if (!Db.esEscritorio) return null;
+  final base = Platform.environment['APPDATA'] ?? Platform.environment['HOME'] ?? '.';
+  final f = File(pth.join(base, 'CuentasDark', 'fotos', '$telefono.jpg'));
+  return f.existsSync() ? f : null;
+}
 
 /// Quién recarga: la hoja NOMBRES de tus Excel, con cuántas veces y cuánto recargó cada número.
 class ClientesModule extends AppModule {
@@ -113,10 +125,10 @@ class _ClientesPageState extends State<ClientesPage> {
         ),
         for (final f in filas)
           ListTile(
-            leading: CircleAvatar(child: Text('${f['veces']}')),
+            leading: _avatar(f),
             title: Text(f['nombre'] as String? ?? 'Sin nombre',
                 style: f['nombre'] == null ? TextStyle(color: Theme.of(context).colorScheme.outline) : null),
-            subtitle: Text('${f['telefono']} · última ${(f['ultima'] as String).substring(0, 10)}'),
+            subtitle: Text('${f['telefono']} · ${f['veces']} recargas · última ${(f['ultima'] as String).substring(0, 10)}'),
             trailing: Text(money(n(f['total'])), style: const TextStyle(fontWeight: FontWeight.bold)),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ClientePage(telefono: f['telefono'] as String)))
                 .then((_) => _cargar()),
@@ -124,6 +136,12 @@ class _ClientesPageState extends State<ClientesPage> {
       ]),
     );
   }
+}
+
+Widget _avatar(Rec f) {
+  final foto = fotoCliente(f['telefono'] as String);
+  if (foto == null) return CircleAvatar(child: Text('${f['veces']}'));
+  return CircleAvatar(backgroundImage: FileImage(foto));
 }
 
 /// Historial de un número: nombre (editable), recargas por mes y lista completa.
@@ -177,6 +195,14 @@ class _ClientePageState extends State<ClientePage> {
         IconButton(icon: const Icon(Icons.edit), tooltip: 'Poner nombre', onPressed: _nombre),
       ]),
       body: ListView(children: [
+        if (fotoCliente(widget.telefono) case final foto?)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(foto, height: 240, fit: BoxFit.contain),
+            ),
+          ),
         ListTile(
           leading: const Icon(Icons.person),
           title: Text(nombre ?? 'Sin nombre (toca para ponerlo)'),
