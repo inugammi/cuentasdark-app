@@ -1,4 +1,4 @@
-// Copia de supabase/cuentas_v1.sql + cuentas_v2.sql + cuentas_v3.sql (si cambias uno, cambia el otro).
+// Copia de supabase/cuentas_v1.sql + cuentas_v2.sql + cuentas_v3.sql + cuentas_v4.sql (si cambias uno, cambia el otro).
 const cuentasSql = r'''
 -- =====================================================================
 -- Cuentas Dark (app Android) · supabase/cuentas_v1.sql
@@ -78,4 +78,17 @@ alter table public.cuentas_dias add column if not exists banca_en_caja double pr
 -- =====================================================================
 alter table public.cuentas_dias add column if not exists recogido double precision;
 alter table public.cuentas_dias add column if not exists recogido_txt text;
+
+-- =====================================================================
+-- Cuentas Dark · supabase/cuentas_v4.sql  (app 1.6)
+-- Fotos de los clientes de recargas (las toma el Vigilante en la PC) para verlas también en el celular.
+-- Pégalo en SQL Editor > RUN. Idempotente.
+-- =====================================================================
+create table if not exists public.cuentas_fotos (
+    telefono text primary key, jpg text, updated_at bigint
+);
+alter table public.cuentas_fotos enable row level security;
+drop policy if exists tpv_autenticado on public.cuentas_fotos;
+create policy tpv_autenticado on public.cuentas_fotos for all to authenticated using (true) with check (true);
+create index if not exists ix_cuentas_fotos_upd on public.cuentas_fotos (updated_at);
 ''';

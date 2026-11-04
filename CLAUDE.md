@@ -84,4 +84,7 @@ Responder en español, directo y conciso. El usuario no compila: el APK lo hace 
 ## Fotos de clientes (Vigilante V3c, nov 2026)
 - El Vigilante (D:\Mis Documentos\Desktop\Vigilante, cotejo con el DVR) da de alta en `nombres` los teléfonos de
   recarga sin nombre ("RECARGA <COMPAÑÍA> dd/mm/aa hh:mm", synced=0) y deja la foto en %APPDATA%\CuentasDark\fotos\<tel>.jpg.
-- `fotoCliente()` (clientes_module.dart) la muestra en Clientes y en la ficha. Solo en la PC (la foto no sube a Supabase).
+- `fotoCliente()` (clientes_module.dart) la muestra en Clientes y en la ficha, desde `Db.dirFotos` (<carpeta de la base>\fotos).
+- Sincronización (app 1.6): `Tpv._fotos()` al final de `respaldar()`. Tabla `cuentas_fotos(telefono, jpg base64, updated_at)`
+  de supabase/cuentas_v4.sql. Solo la PC sube (las fotos nacen ahí); todos bajan. updated_at = fecha del archivo y al bajar
+  se pone esa fecha al archivo, así no rebotan.

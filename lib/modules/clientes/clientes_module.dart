@@ -12,11 +12,10 @@ import '../../core/settings.dart';
 import '../../core/ui.dart';
 
 /// Foto del cliente que deja el Vigilante (cotejo con el video del DVR) en
-/// %APPDATA%\CuentasDark\fotos\<teléfono>.jpg. Solo existe en la PC.
+/// %APPDATA%\CuentasDark\fotos\<teléfono>.jpg; el respaldo la pasa al celular (cuentas_fotos).
 File? fotoCliente(String telefono) {
-  if (!Db.esEscritorio) return null;
-  final base = Platform.environment['APPDATA'] ?? Platform.environment['HOME'] ?? '.';
-  final f = File(pth.join(base, 'CuentasDark', 'fotos', '$telefono.jpg'));
+  if (Db.dirFotos.isEmpty) return null;
+  final f = File(pth.join(Db.dirFotos, '$telefono.jpg'));
   return f.existsSync() ? f : null;
 }
 

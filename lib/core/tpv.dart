@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import 'calc.dart';
@@ -319,7 +321,57 @@ class Tpv {
         subidos += lote.length;
       }
     }
-    return 'Respaldo: $subidos subidos, $bajados bajados';
+    return 'Respaldo: $subidos subidos, $bajados bajados${await _fotos()}';
+  }
+
+  /// Fotos de clientes (tabla cuentas_fotos, JPG en base64). Baja las nuevas de otro equipo y sube
+  /// las de esta carpeta que cambiaron. updated_at = fecha del archivo, así no rebotan entre equipos.
+  Future<String> _fotos() async {
+    if (Db.dirFotos.isEmpty) return '';
+    final dir = Directory(Db.dirFotos);
+    var sub = 0, baj = 0;
+    try {
+      final h = await _h();
+      final desde = int.tryParse(await Db.kv('bajado_fotos') ?? '') ?? 0;
+      final inicio = Db.now;
+      for (final x in await _todo('cuentas_fotos?select=telefono,updated_at&updated_at=gt.$desde&order=updated_at')) {
+        final tel = x['telefono'] as String;
+        final t = n(x['updated_at']).toInt();
+        final f = File(p.join(dir.path, '$tel.jpg'));
+        if (f.existsSync() && f.lastModifiedSync().millisecondsSinceEpoch >= t) continue;
+        final r = await _get('cuentas_fotos?select=jpg&telefono=eq.${Uri.encodeQueryComponent(tel)}');
+        if (r.isEmpty || r.first['jpg'] == null) continue;
+        await dir.create(recursive: true);
+        await f.writeAsBytes(base64Decode(r.first['jpg'] as String), flush: true);
+        await f.setLastModified(DateTime.fromMillisecondsSinceEpoch(t));
+        baj++;
+      }
+      await Db.setKv('bajado_fotos', '$inicio');
+      final hasta = int.tryParse(await Db.kv('subido_fotos') ?? '') ?? 0;
+      var nuevo = hasta;
+      if (Db.esEscritorio && dir.existsSync()) { // las fotos nacen en la PC (Vigilante)
+        for (final f in dir.listSync().whereType<File>()) {
+          if (!f.path.toLowerCase().endsWith('.jpg')) continue;
+          final t = f.lastModifiedSync().millisecondsSinceEpoch;
+          if (t <= hasta) continue;
+          final r = await http.post(Uri.parse('$_base/rest/v1/cuentas_fotos?on_conflict=telefono'),
+              headers: {...h, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal'},
+              body: jsonEncode([
+                {'telefono': p.basenameWithoutExtension(f.path), 'jpg': base64Encode(await f.readAsBytes()), 'updated_at': t}
+              ]));
+          if (r.statusCode == 404) throw _NoExiste('cuentas_fotos');
+          if (r.statusCode >= 300) throw 'fotos ${r.statusCode}';
+          if (t > nuevo) nuevo = t;
+          sub++;
+        }
+      }
+      await Db.setKv('subido_fotos', '$nuevo');
+    } on _NoExiste {
+      return '\nFotos: ejecuta supabase/cuentas_v4.sql (Más > TPVDark > Copiar SQL) para pasarlas al celular.';
+    } catch (e) {
+      return '\nFotos: no se pudieron sincronizar ($e).';
+    }
+    return sub + baj == 0 ? '' : ', fotos: $sub subidas, $baj bajadas';
   }
 }
 
