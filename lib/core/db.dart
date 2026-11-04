@@ -39,6 +39,9 @@ class Db {
     return dir.path;
   }
 
+  /// Fotos de clientes (<teléfono>.jpg): las deja el Vigilante en la PC y el respaldo las pasa al celular.
+  static String dirFotos = '';
+
   static bool get esEscritorio => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   static Future<void> open({String? ruta}) async {
@@ -47,6 +50,7 @@ class Db {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
+    dirFotos = p.join(ruta == null ? await carpeta() : p.dirname(ruta), 'fotos');
     _db = await openDatabase(
       ruta ?? p.join(await carpeta(), 'cuentasdark.db'),
       version: 4,
